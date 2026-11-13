@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>坚持1分钟</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #05060a;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas { display: block; }
+
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    padding: 22px 30px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    color: #cfd8ea;
+  }
+  .hud-left { display: flex; flex-direction: column; gap: 9px; }
+  .hud-time {
+    font-size: 46px; font-weight: 700; line-height: 1;
+    letter-spacing: 1px; color: #eaf3ff;
+    text-shadow: 0 0 22px rgba(91,225,255,.45);
+    font-variant-numeric: tabular-nums;
+  }
+  .hud-time small { font-size: 15px; font-weight: 400; color: #6d7b96; margin-left: 4px; }
+  .hud-sub { display: flex; align-items: center; gap: 16px; font-size: 13px; color: #7f8ca6; flex-wrap: wrap; }
+  .hud-sub b { color: #9fb0cc; font-weight: 600; }
+  .pips { display: flex; gap: 5px; }
+  .pip {
+    width: 12px; height: 12px; border-radius: 3px;
+    background: #2a3245; transition: background .15s, box-shadow .15s;
+  }
+  .pip.on {
+    background: #5be1ff;
+    box-shadow: 0 0 12px rgba(91,225,255,.85), 0 0 3px #fff inset;
+  }
+  #hudBuff { display: flex; gap: 8px; font-size: 11px; letter-spacing: 1px; }
+  .buff { padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; opacity: .95; }
+  .buff.shield { color: #ffd166; }
+  .buff.slow { color: #8ab4ff; }
+
+  .hud-right { text-align: right; font-size: 13px; color: #6d7b96; line-height: 1.7; }
+  .hud-right b { color: #ffd166; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .hud-diff { font-size: 11px; letter-spacing: 3px; color: #55617a; margin-top: 2px; }
+
+  #overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 45%, rgba(10,16,30,.55), rgba(3,4,8,.92));
+    backdrop-filter: blur(3px);
+    opacity: 0; visibility: hidden; transition: opacity .28s ease, visibility .28s;
+    cursor: default; padding: 24px; overflow-y: auto;
+  }
+  #overlay.show { opacity: 1; visibility: visible; }
+
+  .card {
+    width: min(560px, 100%);
+    padding: 36px 40px 32px;
+    border-radius: 20px;
+    background: linear-gradient(165deg, rgba(24,32,50,.96), rgba(10,14,24,.98));
+    border: 1px solid rgba(91,225,255,.16);
+    box-shadow: 0 30px 80px rgba(0,0,0,.7), 0 0 60px rgba(91,225,255,.06) inset;
+    text-align: center;
+    transform: translateY(10px) scale(.985);
+    transition: transform .3s cubic-bezier(.2,.9,.3,1.2);
+  }
+  #overlay.show .card { transform: translateY(0) scale(1); }
+
+  .title {
+    font-size: 32px; font-weight: 800; letter-spacing: 3px; margin: 0 0 6px;
+    background: linear-gradient(90deg, #5be1ff, #a78bfa 55%, #ff7a9c);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .subtitle { font-size: 12px; color: #6d7b96; letter-spacing: 3px; margin-bottom: 20px; }
+
+  .rules {
+    text-align: left; font-size: 13px; color: #93a2bd; line-height: 1.95;
+    margin: 0 0 20px; padding: 14px 17px; border-radius: 12px;
+    background: rgba(255,255,255,.025); border-left: 2px solid rgba(91,225,255,.5);
+  }
+  .rules b { color: #cfdcf2; font-weight: 600; display: block; margin-bottom: 5px; }
+  .rules span.k { color: #5be1ff; }
+
+  .difflabel { font-size: 11px; letter-spacing: 4px; color: #55617a; margin-bottom: 10px; }
+  .diffrow { display: flex; gap: 10px; margin-bottom: 4px; }
+  .diffbtn {
+    flex: 1; pointer-events: auto; cursor: pointer;
+    padding: 13px 6px 11px; border-radius: 13px;
+    border: 1px solid rgba(255,255,255,.09);
+    background: rgba(255,255,255,.035);
+    color: #dbe6f7; font-family: inherit;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    transition: transform .16s, border-color .16s, background .16s, box-shadow .16s;
+  }
+  .diffbtn .n { font-size: 17px; font-weight: 700; letter-spacing: 2px; }
+  .diffbtn .d { font-size: 10.5px; color: #7b8aa5; line-height: 1.5; text-align: center; }
+  .diffbtn .hp { font-size: 10.5px; color: var(--c, #5be1ff); letter-spacing: 1px; }
+  .diffbtn:hover {
+    transform: translateY(-3px);
+    border-color: var(--c, #5be1ff);
+    background: rgba(91,225,255,.08);
+    box-shadow: 0 10px 26px rgba(0,0,0,.45), 0 0 22px -6px var(--c, #5be1ff);
+  }
+  .diffbtn:active { transform: translateY(-1px) scale(.985); }
+
+  .btn {
+    display: inline-block; pointer-events: auto; cursor: pointer;
+    padding: 13px 44px; border-radius: 999px; border: none;
+    font-size: 15px; font-weight: 700; letter-spacing: 2px; color: #04121a;
+    background: linear-gradient(95deg, #5be1ff, #7ee8c0);
+    box-shadow: 0 8px 28px rgba(91,225,255,.32);
+    transition: transform .15s, box-shadow .15s, filter .15s;
+    font-family: inherit;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 36px rgba(91,225,255,.45); filter: brightness(1.06); }
+  .btn:active { transform: translateY(0) scale(.98); }
+
+  .btn.ghost {
+    background: rgba(255,255,255,.06);
+    color: #b8c6dd;
+    box-shadow: none;
+    border: 1px solid rgba(255,255,255,.14);
+  }
+  .btn.compact { padding: 13px 30px; font-size: 14px; }
+  .btn.danger {
+    background: linear-gradient(95deg, #ff6b7f, #ff9a5a);
+    box-shadow: 0 8px 28px rgba(255,90,110,.32);
+    color: #1a0508;
+  }
+
+  .warncard { border-color: rgba(255,90,110,.35); box-shadow: 0 30px 80px rgba(0,0,0,.75), 0 0 70px rgba(255,60,90,.10) inset; }
+  .warntitle {
+    font-size: 26px; font-weight: 800; letter-spacing: 3px; color: #ff6b7f; margin: 0 0 4px;
+    text-shadow: 0 0 26px rgba(255,80,110,.5);
+  }
+  .warnlist {
+    text-align: left; font-size: 13.5px; color: #c3cede; line-height: 2.05;
+    margin: 18px 0 22px; padding: 16px 18px; border-radius: 12px;
+    background: rgba(255,60,90,.06); border-left: 2px solid #ff6b7f;
+  }
+  .warnlist em { color: #ff9aa8; font-style: normal; font-weight: 600; }
+  .btnrow { display: flex; gap: 12px; justify-content: center; }
+
+  .rank {
+    font-size: 76px; font-weight: 900; line-height: 1; margin: 2px 0 0;
+    letter-spacing: 2px; font-style: italic;
+  }
+  .rank-tag { font-size: 12px; letter-spacing: 4px; color: #6d7b96; margin-bottom: 14px; }
+  .res-diff {
+    display: inline-block; font-size: 11px; letter-spacing: 3px;
+    padding: 4px 14px; border-radius: 999px; margin-bottom: 12px;
+    border: 1px solid rgba(255,255,255,.16); color: #a8b8d4;
+  }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 16px; }
+  .stat {
+    padding: 11px 8px; border-radius: 11px;
+    background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.05);
+  }
+  .stat .v { font-size: 19px; font-weight: 700; color: #e8f1ff; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 11px; color: #6d7b96; margin-top: 2px; letter-spacing: 1px; }
+
+  #pauseHint {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    font-size: 12px; color: #4d5870; letter-spacing: 2px; pointer-events: none;
+    opacity: 0; transition: opacity .4s;
+  }
+  #pauseHint.show { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="hud-left">
+    <div class="hud-time"><span id="hudTime">60.0</span><small>秒</small></div>
+    <div class="hud-sub">
+      <div class="pips" id="hudHp"></div>
+      <div>得分 <b id="hudScore">0</b></div>
+      <div>躲避 <b id="hudDodge">0</b></div>
+      <div id="hudBuff"></div>
+    </div>
+  </div>
+  <div class="hud-right">
+    最高分<br><b id="hudBest">0</b>
+    <div class="hud-diff" id="hudDiff"></div>
+  </div>
+</div>
+
+<div id="overlay" class="show">
+  <div class="card" id="overlayInner"></div>
+</div>
+
+<div id="pauseHint">已暂停 · 移动鼠标继续</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var hudTime = document.getElementById('hudTime');
+  var hudScore = document.getElementById('hudScore');
+  var hudDodge = document.getElementById('hudDodge');
+  var hudHp = document.getElementById('hudHp');
+  var hudBuff = document.getElementById('hudBuff');
+  var hudBest = document.getElementById('hudBest');
+  var hudDiff = document.getElementById('hudDiff');
+  var overlay = document.getElementById('overlay');
+  var overlayInner = document.getElementById('overlayInner');
+  var pauseHint = document.getElementById('pauseHint');
+
+  var DURATION = 60;
+  var TAU = Math.PI * 2;
+
+  /* ---- 新攻击与道具的时间节点（全难度通用） ---- */
+  var RING_START = 30;       // 30 秒起出现核心向外的环形爆发
+  var LASER_START = 20;      // 20 秒起出现激光
+  var LASER_EVERY = 5.5;     // 激光间隔
+  var HOMING_START = 40;     // 40 秒起出现追踪弹
+  var HOMING_EVERY = 4.5;    // 追踪弹间隔
+  var ITEM_FIRST = 5;        // 首个道具出现时间
+  var ITEM_EVERY = 5;        // 道具刷新间隔（秒）
+  var ITEM_LIFE = 2;         // 道具存在秒数，超时未拾取即消失
+
+  var DIFF = {
+    easy: {
+      key: 'easy', label: '简单', color: '#5be1c0',
+      desc: '5 点生命', sub: '前 30 秒节奏很慢',
+      hp: 5, items: true,
+      fire: [1.20, 0.62], speed: [290, 470],
+      fan: [1, 1, 3, 3, 5], spread: [0, 0.14, 0.18, 0.20, 0.24],
+      phase: [0, 0.28, 0.50, 0.68, 0.86],
+      ringFrom: 5, ringN: [8, 10], ringSpeed: [170, 230], ringEvery: [9.5, 7.5],
+      snipeFrom: 99, scoreMul: 0.8
+    },
+    normal: {
+      key: 'normal', label: '普通', color: '#5be1ff',
+      desc: '3 点生命', sub: '标准节奏',
+      hp: 3, items: true,
+      fire: [0.80, 0.30], speed: [340, 660],
+      fan: [1, 3, 3, 5, 5], spread: [0, 0.17, 0.24, 0.22, 0.28],
+      phase: [0, 0.15, 0.35, 0.55, 0.75],
+      ringFrom: 3, ringN: [10, 18], ringSpeed: [200, 300], ringEvery: [8.5, 6.0],
+      snipeFrom: 5, scoreMul: 1.0
+    },
+    hard: {
+      key: 'hard', label: '困难', color: '#ff5a78',
+      desc: '1 点生命', sub: '一击必死 · 无道具',
+      hp: 1, items: false,
+      fire: [0.62, 0.20], speed: [420, 800],
+      fan: [1, 3, 5, 7, 9], spread: [0, 0.20, 0.26, 0.24, 0.26],
+      phase: [0, 0.05, 0.15, 0.28, 0.42],
+      ringFrom: 3, ringN: [14, 22], ringSpeed: [230, 340], ringEvery: [7.5, 5.0],
+      snipeFrom: 3, scoreMul: 1.4
+    }
+  };
+  var DIFF_ORDER = ['easy', 'normal', 'hard'];
+
+  /* ---- 道具定义 ---- */
+  var ITEMS = {
+    heal:   { color: '#6cf39a', glyph: 'cross',  name: '治疗' },
+    shield: { color: '#ffd166', glyph: 'shield', name: '护盾' },
+    slow:   { color: '#8ab4ff', glyph: 'snow',   name: '减速' },
+    clear:  { color: '#ff8ad8', glyph: 'star',   name: '清屏' }
+  };
+  var ITEM_POOL = ['heal', 'heal', 'shield', 'shield', 'slow', 'clear'];
+
+  var W = 0, H = 0, DPR = 1;
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  function bestOf(key) {
+    return parseInt(localStorage.getItem('mdg_best_' + key) || '0', 10) || 0;
+  }
+  function bestAll() {
+    var m = 0;
+    for (var i = 0; i < DIFF_ORDER.length; i++) m = Math.max(m, bestOf(DIFF_ORDER[i]));
+    return m;
+  }
+
+  var mouse = { x: 0, y: 0, has: false };
+
+  var G = {
+    mode: 'menu',
+    cfg: DIFF.normal,
+    elapsed: 0,
+    maxHp: 3,
+    hp: 3,
+    score: 0,
+    dodges: 0,
+    hits: 0,
+    picked: 0,
+    player: { x: 0, y: 0, r: 8, invuln: 0, trail: [] },
+    enemy: { x: 0, y: 0, r: 25, a: 0, pupil: 0 },
+    bullets: [],
+    bursts: [],
+    warnings: [],
+    lasers: [],
+    items: [],
+    particles: [],
+    ripples: [],
+    fireTimer: 0,
+    burstTimer: 5,
+    snipeTimer: 3,
+    laserTimer: 0,
+    homingTimer: 0,
+    itemTimer: 0,
+    shieldT: 0,
+    slowT: 0,
+    shake: 0,
+    flash: 0,
+    paused: false
+  };
+
+  /* ---------- 画布 ---------- */
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+
+  /* ---------- 输入 ---------- */
+  window.addEventListener('mousemove', function (e) {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    mouse.has = true;
+  });
+  window.addEventListener('blur', function () {
+    if (G.mode === 'playing') G.paused = true;
+  });
+  window.addEventListener('focus', function () {
+    if (G.paused) G.paused = false;
+  });
+
+  /* ---------- 特效 ---------- */
+  function burstParticles(x, y, n, color, speed, life) {
+    for (var i = 0; i < n; i++) {
+      var a = rand(0, TAU);
+      var s = rand(speed * 0.25, speed);
+      G.particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: 1, decay: rand(1.4, 3.0) / (life || 1),
+        r: rand(1.2, 3.4), color: color
+      });
+    }
+  }
+
+  function addRipple(x, y, r0, r1, color, dur) {
+    G.ripples.push({ x: x, y: y, r0: r0, r1: r1, t: 0, dur: dur, color: color });
+  }
+
+  function phaseOf(cfg, d) {
+    var p = 1;
+    for (var i = 1; i < cfg.phase.length; i++) {
+      if (d >= cfg.phase[i]) p = i + 1;
+    }
+    return p;
+  }
+
+  /* ---------- HUD ---------- */
+  function buildHpPips(n) {
+    hudHp.innerHTML = '';
+    for (var i = 0; i < n; i++) {
+      var d = document.createElement('div');
+      d.className = 'pip on';
+      hudHp.appendChild(d);
+    }
+  }
+
+  function refreshHp() {
+    var kids = hudHp.children;
+    for (var i = 0; i < kids.length; i++) {
+      kids[i].className = 'pip' + (i < G.hp ? ' on' : '');
+    }
+  }
+
+  function refreshBuff() {
+    var html = '';
+    if (G.shieldT > 0) html += '<span class="buff shield">护盾 ' + G.shieldT.toFixed(1) + 's</span>';
+    if (G.slowT > 0) html += '<span class="buff slow">减速 ' + G.slowT.toFixed(1) + 's</span>';
+    hudBuff.innerHTML = html;
+  }
+
+  /* ---------- 流程 ---------- */
+  function startGame(key) {
+    var cfg = DIFF[key] || DIFF.normal;
+    G.cfg = cfg;
+    G.mode = 'playing';
+    G.elapsed = 0;
+    G.maxHp = cfg.hp;
+    G.hp = cfg.hp;
+    G.score = 0;
+    G.dodges = 0;
+    G.hits = 0;
+    G.picked = 0;
+    G.bullets.length = 0;
+    G.bursts.length = 0;
+    G.warnings.length = 0;
+    G.lasers.length = 0;
+    G.items.length = 0;
+    G.particles.length = 0;
+    G.ripples.length = 0;
+    G.fireTimer = 0.85;
+    G.burstTimer = 0;
+    G.snipeTimer = 3.5;
+    G.laserTimer = 0;
+    G.homingTimer = 0;
+    G.itemTimer = ITEM_FIRST;
+    G.shieldT = 0;
+    G.slowT = 0;
+    G.shake = 0;
+    G.flash = 0;
+    G.paused = false;
+    G.player.invuln = 0;
+    G.player.trail.length = 0;
+    G.player.x = mouse.has ? clamp(mouse.x, 20, W - 20) : W / 2;
+    G.player.y = mouse.has ? clamp(mouse.y, 20, H - 20) : H / 2;
+    G.enemy.x = W / 2;
+    G.enemy.y = H * 0.28;
+    G.enemy.a = 0;
+    buildHpPips(cfg.hp);
+    refreshBuff();
+    hudDiff.textContent = cfg.label;
+    hudBest.textContent = bestAll();
+    overlay.classList.remove('show');
+    pauseHint.classList.remove('show');
+  }
+
+  function endGame(survived) {
+    G.mode = 'over';
+    G.paused = false;
+    var cfg = G.cfg;
+    var finalScore = Math.round(G.score) + (survived ? 500 : 0);
+    if (finalScore > bestOf(cfg.key)) {
+      try { localStorage.setItem('mdg_best_' + cfg.key, String(finalScore)); } catch (e) {}
+    }
+    var best = bestOf(cfg.key);
+
+    var rank;
+    if (!survived) rank = G.elapsed >= DURATION * 0.5 ? 'C' : 'D';
+    else if (G.hits === 0) rank = 'S';
+    else if (G.hits <= 1) rank = 'A';
+    else rank = 'B';
+
+    var colors = {
+      S: 'linear-gradient(180deg,#ffe9a8,#ffb020)',
+      A: 'linear-gradient(180deg,#a8f0ff,#38c7ff)',
+      B: 'linear-gradient(180deg,#c9d6ff,#7a90d8)',
+      C: 'linear-gradient(180deg,#ffc4a8,#ff7a52)',
+      D: 'linear-gradient(180deg,#ffb3c0,#e2425f)'
+    };
+    var tags = { S: 'PERFECT', A: 'EXCELLENT', B: 'GOOD', C: 'SURVIVED', D: 'DOWN' };
+
+    overlayInner.innerHTML =
+      '<div class="res-diff">' + cfg.label + ' 难度</div>' +
+      '<div class="rank" style="background:' + colors[rank] +
+        ';-webkit-background-clip:text;background-clip:text;color:transparent;">' + rank + '</div>' +
+      '<div class="rank-tag">' + tags[rank] + '</div>' +
+      '<div class="title" style="font-size:21px;letter-spacing:2px;">' +
+        (survived ? '坚持到了最后' : '被弹幕击倒') + '</div>' +
+      '<div class="subtitle">' + (survived ? 'TIME UP' : 'ELIMINATED') + '</div>' +
+      '<div class="stats">' +
+        '<div class="stat"><div class="v">' + G.elapsed.toFixed(1) + 's</div><div class="l">存活时长</div></div>' +
+        '<div class="stat"><div class="v">' + finalScore + '</div><div class="l">总分</div></div>' +
+        '<div class="stat"><div class="v">' + G.dodges + '</div><div class="l">成功躲避</div></div>' +
+        '<div class="stat"><div class="v">' + G.hits + '</div><div class="l">被击中</div></div>' +
+        '<div class="stat"><div class="v">' + (cfg.items ? G.picked : '—') + '</div><div class="l">拾取道具</div></div>' +
+        '<div class="stat"><div class="v">' + cfg.hp + '</div><div class="l">初始生命</div></div>' +
+      '</div>' +
+      '<div class="subtitle" style="margin-bottom:16px;">本难度最高 ' + best + ' 分</div>' +
+      '<div class="btnrow">' +
+        '<button class="btn ghost compact" id="backBtn">返回界面</button>' +
+        '<button class="btn" id="againBtn">再来一局</button>' +
+      '</div>';
+
+    overlay.classList.add('show');
+    hudBest.textContent = bestAll();
+    document.getElementById('againBtn').addEventListener('click', function () { startGame(cfg.key); });
+    document.getElementById('backBtn').addEventListener('click', showMenu);
+  }
+
+  function showMenu() {
+    G.mode = 'menu';
+    var btns = '';
+    for (var i = 0; i < DIFF_ORDER.length; i++) {
+      var k = DIFF_ORDER[i];
+      var c = DIFF[k];
+      btns +=
+        '<button class="diffbtn" data-diff="' + k + '" style="--c:' + c.color + '">' +
+          '<span class="n" style="color:' + c.color + '">' + c.label + '</span>' +
+          '<span class="hp">' + c.desc + '</span>' +
+          '<span class="d">' + c.sub + '</span>' +
+          '<span class="d" style="color:#4f5a72;">最高 ' + bestOf(k) + '</span>' +
+        '</button>';
+    }
+
+    overlayInner.className = 'card';
+    overlayInner.innerHTML =
+      '<div class="title">坚持1分钟</div>' +
+      '<div class="subtitle">DODGE THE VOID</div>' +
+      '<div class="rules">' +
+        '<b>规则</b>' +
+        '· 你的<span class="k">鼠标光标</span>就是全部，无法攻击，只能躲<br>' +
+        '· 红色核心锁定你射击，弹幕随时间越来越复杂<br>' +
+        '· <span class="k">20 秒</span>激光、<span class="k">30 秒</span>环形爆发、<span class="k">40 秒</span>追踪弹<br>' +
+        '· 简单与普通会掉落道具，<span class="k">困难没有任何道具</span><br>' +
+        '· 坚持满 <span class="k">60 秒</span> 即为通关' +
+      '</div>' +
+      '<div class="difflabel">选择难度</div>' +
+      '<div class="diffrow">' + btns + '</div>' +
+      '<div class="subtitle" style="margin:14px 0 0;font-size:11px;">难度越高，弹幕升级越早、生命越少、得分倍率越高</div>';
+
+    overlay.classList.add('show');
+    hudBest.textContent = bestAll();
+    hudDiff.textContent = '';
+
+    var list = overlayInner.querySelectorAll('.diffbtn');
+    for (var j = 0; j < list.length; j++) {
+      list[j].addEventListener('click', function () {
+        var k = this.getAttribute('data-diff');
+        if (k === 'hard') showHardConfirm();
+        else startGame(k);
+      });
+    }
+  }
+
+  function showHardConfirm() {
+    overlayInner.className = 'card warncard';
+    overlayInner.innerHTML =
+      '<div class="warntitle">困难模式确认</div>' +
+      '<div class="subtitle" style="margin-bottom:0;">HARD MODE</div>' +
+      '<div class="warnlist">' +
+        '· 生命只有 <em>1 点</em>，被任何一次攻击命中立即结束<br>' +
+        '· 本模式 <em>不会出现任何道具</em>——治疗、护盾、减速、清屏全部没有<br>' +
+        '· 20 秒激光、30 秒环形爆发、40 秒追踪弹，全程高压<br>' +
+        '· 没有容错空间，请确认后再进入' +
+      '</div>' +
+      '<div class="btnrow">' +
+        '<button class="btn ghost" id="cancelHard">返回</button>' +
+        '<button class="btn danger" id="confirmHard">确认进入</button>' +
+      '</div>';
+
+    overlay.classList.add('show');
+    document.getElementById('cancelHard').addEventListener('click', showMenu);
+    document.getElementById('confirmHard').addEventListener('click', function () { startGame('hard'); });
+  }
+
+  /* ---------- 敌人 ---------- */
+  function updateEnemy(dt) {
+    var e = G.enemy;
+    var d = Math.min(G.elapsed / DURATION, 1);
+    e.a += dt * (0.55 + d * 0.9);
+
+    var cx = W / 2, cy = H * 0.48;
+    var rx = Math.min(W, H) * (0.34 + d * 0.05);
+    var ry = Math.min(W, H) * 0.24;
+
+    var nx = cx + Math.cos(e.a) * rx;
+    var ny = cy + Math.sin(e.a * 1.6) * ry;
+    e.x = lerp(e.x, nx, 1 - Math.pow(0.001, dt));
+    e.y = lerp(e.y, ny, 1 - Math.pow(0.001, dt));
+
+    var targetAng = Math.atan2(G.player.y - e.y, G.player.x - e.x);
+    var curAng = Math.atan2(Math.sin(e.pupil), Math.cos(e.pupil));
+    var diff = Math.atan2(Math.sin(targetAng - curAng), Math.cos(targetAng - curAng));
+    e.pupil += diff * Math.min(1, dt * 9);
+  }
+
+  /* ---------- 攻击：扇面 ---------- */
+  function fireVolley(cfg, d, phase) {
+    var e = G.enemy;
+    var p = G.player;
+
+    var speed = lerp(cfg.speed[0], cfg.speed[1], d) * rand(0.94, 1.06);
+    var dist = Math.hypot(p.x - e.x, p.y - e.y);
+    var flight = dist / speed;
+    var lead = 0.55;
+
+    var n = p.trail.length;
+    var vx = 0, vy = 0;
+    if (n >= 2) {
+      vx = (p.trail[n - 1].x - p.trail[n - 2].x) * 60;
+      vy = (p.trail[n - 1].y - p.trail[n - 2].y) * 60;
+    }
+    var tx = p.x + vx * flight * lead;
+    var ty = p.y + vy * flight * lead;
+
+    var baseAng = Math.atan2(ty - e.y, tx - e.x);
+    var count = cfg.fan[phase - 1] || 1;
+    var spread = cfg.spread[phase - 1] || 0;
+
+    var start = baseAng - spread * (count - 1) / 2;
+    for (var i = 0; i < count; i++) {
+      var a = start + spread * i + rand(-0.02, 0.02);
+      G.bullets.push({
+        x: e.x + Math.cos(a) * (e.r * 0.9),
+        y: e.y + Math.sin(a) * (e.r * 0.9),
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        r: lerp(6.0, 4.6, d),
+        life: 6,
+        counted: false
+      });
+    }
+    addRipple(e.x, e.y, e.r, e.r * 2.2, 'rgba(255,80,110,.5)', 0.25);
+    G.shake = Math.max(G.shake, 2.2);
+  }
+
+  /* ---------- 攻击：环形 ---------- */
+  function fireBurst(cfg, d) {
+    var e = G.enemy;
+    var n = Math.round(lerp(cfg.ringN[0], cfg.ringN[1], d));
+    var speed = lerp(cfg.ringSpeed[0], cfg.ringSpeed[1], d);
+    var offset = rand(0, TAU);
+    for (var i = 0; i < n; i++) {
+      var a = offset + TAU * i / n;
+      G.bullets.push({
+        x: e.x, y: e.y,
+        vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+        r: 5, life: 8, counted: false
+      });
+    }
+    addRipple(e.x, e.y, e.r, Math.max(W, H) * 0.6, 'rgba(255,60,90,.35)', 0.5);
+    G.shake = Math.max(G.shake, 9);
+  }
+
+  /* ---------- 攻击：狙击预警 ---------- */
+  function startSniper(cfg, d) {
+    var e = G.enemy;
+    var p = G.player;
+    var ang = Math.atan2(p.y - e.y, p.x - e.x);
+    var len = Math.hypot(p.x - e.x, p.y - e.y) * 1.6 + 200;
+    G.warnings.push({
+      x1: e.x + Math.cos(ang) * e.r, y1: e.y + Math.sin(ang) * e.r,
+      x2: e.x + Math.cos(ang) * len, y2: e.y + Math.sin(ang) * len,
+      ang: ang, t: 0.5, max: 0.5,
+      speed: lerp(cfg.speed[1] * 1.35, cfg.speed[1] * 1.6, d)
+    });
+  }
+
+  /* ---------- 攻击：追踪弹 ---------- */
+  function spawnHoming() {
+    var e = G.enemy;
+    var p = G.player;
+    var ang = Math.atan2(p.y - e.y, p.x - e.x);
+    var speed = 210;
+    G.bullets.push({
+      x: e.x, y: e.y,
+      vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+      r: 8.5, life: 7, counted: false,
+      homing: true, state: 'chase', age: 0,
+      speed: speed, turn: 2.6
+    });
+    addRipple(e.x, e.y, e.r, e.r * 2.6, 'rgba(170,110,255,.6)', 0.35);
+    G.shake = Math.max(G.shake, 4);
+  }
+
+  /* ---------- 攻击：激光 ---------- */
+  function spawnLaser() {
+    var e = G.enemy;
+    var p = G.player;
+    var ang = Math.atan2(p.y - e.y, p.x - e.x);
+    var track = Math.random() < 0.45;
+
+    G.lasers.push({
+      type: track ? 'track' : 'line',
+      ox: e.x, oy: e.y,
+      ang: ang,
+      phase: 'warn',
+      t: track ? 1.0 : 0.85,
+      warn: track ? 1.0 : 0.85,
+      fire: track ? 1.35 : 0.30,
+      width: track ? 13 : 17,
+      turn: 1.25,
+      len: Math.max(W, H) * 1.6,
+      hitLock: 0
+    });
+    G.shake = Math.max(G.shake, 3);
+  }
+
+  /* ---------- 道具 ---------- */
+  function spawnItem() {
+    var tries = 0, x, y, ok = false;
+    while (tries < 24 && !ok) {
+      tries++;
+      x = rand(80, Math.max(90, W - 80));
+      y = rand(90, Math.max(100, H - 90));
+      var dp = Math.hypot(x - G.player.x, y - G.player.y);
+      var de = Math.hypot(x - G.enemy.x, y - G.enemy.y);
+      ok = dp > 130 && de > 90;
+    }
+    if (!ok) return;
+    var type = ITEM_POOL[Math.floor(Math.random() * ITEM_POOL.length)];
+    G.items.push({ x: x, y: y, r: 15, type: type, age: 0, life: ITEM_LIFE, phase: rand(0, TAU) });
+  }
+
+  function applyItem(type) {
+    var c = ITEMS[type];
+    if (type === 'heal') {
+      G.hp = Math.min(G.maxHp, G.hp + 1);
+      refreshHp();
+    } else if (type === 'shield') {
+      G.shieldT = Math.max(G.shieldT, 4.5);
+    } else if (type === 'slow') {
+      G.slowT = Math.max(G.slowT, 4.0);
+    } else if (type === 'clear') {
+      var n = G.bullets.length;
+      G.bullets.length = 0;
+      G.score += n * 6 * G.cfg.scoreMul;
+      addRipple(G.player.x, G.player.y, 10, Math.max(W, H) * 0.7, 'rgba(255,138,216,.55)', 0.55);
+      G.shake = Math.max(G.shake, 8);
+    }
+    G.picked += 1;
+    burstParticles(G.player.x, G.player.y, 18, c.color.replace('#', ''), 260, 1);
+    refreshBuff();
+  }
+
+  /* ---------- 受伤 ---------- */
+  function damagePlayer() {
+    var p = G.player;
+    if (p.invuln > 0) return false;
+
+    if (G.shieldT > 0) {
+      G.shieldT = 0;
+      p.invuln = 0.9;
+      G.shake = 10;
+      addRipple(p.x, p.y, 6, 90, 'rgba(255,209,102,.9)', 0.45);
+      burstParticles(p.x, p.y, 20, '255,209,102', 300, 1);
+      refreshBuff();
+      return false;
+    }
+
+    G.hp -= 1;
+    G.hits += 1;
+    p.invuln = 1.25;
+    G.shake = 16;
+    G.flash = 1;
+    burstParticles(p.x, p.y, 26, '255,90,120', 340, 1);
+    addRipple(p.x, p.y, 4, 70, 'rgba(255,70,100,.85)', 0.45);
+    refreshHp();
+    if (G.hp <= 0) { endGame(false); return true; }
+    return false;
+  }
+
+  /* ---------- 激光命中判定 ---------- */
+  function laserHits(l, px, py) {
+    var dx = px - l.ox, dy = py - l.oy;
+    var ca = Math.cos(l.ang), sa = Math.sin(l.ang);
+    var proj = dx * ca + dy * sa;
+    if (proj < 0) return false;
+    var perp = Math.abs(-dx * sa + dy * ca);
+    return perp < l.width / 2;
+  }
+
+  /* ---------- 主更新 ---------- */
+  function update(dt) {
+    var p = G.player;
+    var cfg = G.cfg;
+    var d = Math.min(G.elapsed / DURATION, 1);
+    var phase = phaseOf(cfg, d);
+    var slowFactor = G.slowT > 0 ? 0.45 : 1;
+
+    if (mouse.has) {
+      p.x = clamp(mouse.x, p.r + 2, W - p.r - 2);
+      p.y = clamp(mouse.y, p.r + 2, H - p.r - 2);
+    }
+
+    p.trail.push({ x: p.x, y: p.y, life: 1 });
+    if (p.trail.length > 22) p.trail.shift();
+    for (var i = 0; i < p.trail.length; i++) p.trail[i].life -= dt * 2.6;
+
+    if (p.invuln > 0) p.invuln -= dt;
+    if (G.shieldT > 0) G.shieldT -= dt;
+    if (G.slowT > 0) G.slowT -= dt;
+
+    G.elapsed += dt;
+    G.score += dt * 50 * cfg.scoreMul;
+
+    updateEnemy(dt);
+
+    // 扇面
+    G.fireTimer -= dt;
+    if (G.fireTimer <= 0) {
+      fireVolley(cfg, d, phase);
+      G.fireTimer = lerp(cfg.fire[0], cfg.fire[1], d) * rand(0.88, 1.15);
+    }
+
+    // 环形爆发：固定 30 秒解锁，全难度通用
+    if (G.elapsed >= RING_START) {
+      G.burstTimer -= dt;
+      if (G.burstTimer <= 0) {
+        G.bursts.push({ t: 0.55, max: 0.55, cfg: cfg, d: d });
+        G.burstTimer = lerp(cfg.ringEvery[0], cfg.ringEvery[1], d) * rand(0.9, 1.1);
+      }
+    }
+
+    // 狙击
+    if (phase >= cfg.snipeFrom) {
+      G.snipeTimer -= dt;
+      if (G.snipeTimer <= 0) {
+        startSniper(cfg, d);
+        G.snipeTimer = lerp(3.0, 1.4, d) * rand(0.9, 1.1);
+      }
+    }
+
+    // 激光（20 秒起，全难度）
+    if (G.elapsed >= LASER_START) {
+      G.laserTimer -= dt;
+      if (G.laserTimer <= 0) {
+        spawnLaser();
+        G.laserTimer = LASER_EVERY * rand(0.85, 1.2);
+      }
+    }
+
+    // 追踪弹（40 秒起，全难度）
+    if (G.elapsed >= HOMING_START) {
+      G.homingTimer -= dt;
+      if (G.homingTimer <= 0) {
+        spawnHoming();
+        G.homingTimer = HOMING_EVERY * rand(0.85, 1.2);
+      }
+    }
+
+    // 道具生成
+    if (cfg.items) {
+      G.itemTimer -= dt;
+      if (G.itemTimer <= 0) {
+        spawnItem();
+        G.itemTimer = ITEM_EVERY;
+      }
+    }
+
+    // 道具拾取 / 过期
+    for (var it = G.items.length - 1; it >= 0; it--) {
+      var item = G.items[it];
+      item.age += dt;
+      var dpi = Math.hypot(item.x - p.x, item.y - p.y);
+      if (dpi < p.r + item.r + 4) {
+        applyItem(item.type);
+        G.items.splice(it, 1);
+        continue;
+      }
+      if (item.age >= item.life) G.items.splice(it, 1);
+    }
+
+    // 蓄力环形
+    for (var b = G.bursts.length - 1; b >= 0; b--) {
+      G.bursts[b].t -= dt;
+      if (G.bursts[b].t <= 0) {
+        fireBurst(G.bursts[b].cfg, G.bursts[b].d);
+        G.bursts.splice(b, 1);
+      }
+    }
+
+    // 狙击预警
+    for (var w = G.warnings.length - 1; w >= 0; w--) {
+      var wn = G.warnings[w];
+      wn.t -= dt;
+      if (wn.t <= 0) {
+        G.bullets.push({
+          x: wn.x1, y: wn.y1,
+          vx: Math.cos(wn.ang) * wn.speed, vy: Math.sin(wn.ang) * wn.speed,
+          r: 7.5, life: 5, counted: false, sniper: true
+        });
+        addRipple(wn.x1, wn.y1, 4, 40, 'rgba(255,220,120,.8)', 0.3);
+        G.shake = Math.max(G.shake, 5);
+        G.warnings.splice(w, 1);
+      }
+    }
+
+    // 激光
+    for (var li = G.lasers.length - 1; li >= 0; li--) {
+      var l = G.lasers[li];
+      // 光束起点始终跟着核心，避免敌人移动后光束看起来悬空
+      l.ox = G.enemy.x;
+      l.oy = G.enemy.y;
+      l.t -= dt;
+
+      if (l.phase === 'warn') {
+        if (l.t <= 0) {
+          l.phase = 'fire';
+          l.t = l.fire;
+          G.shake = Math.max(G.shake, 10);
+          addRipple(l.ox, l.oy, 6, 70, 'rgba(255,110,140,.8)', 0.3);
+        }
+      } else {
+        if (l.type === 'track') {
+          var want = Math.atan2(p.y - l.oy, p.x - l.ox);
+          var cur = l.ang;
+          var df = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+          var maxTurn = l.turn * dt;
+          l.ang += clamp(df, -maxTurn, maxTurn);
+        }
+        if (laserHits(l, p.x, p.y)) {
+          if (damagePlayer()) return;
+          l.hitLock = 0.45;
+        }
+        if (l.hitLock > 0) l.hitLock -= dt;
+        if (l.t <= 0) G.lasers.splice(li, 1);
+      }
+    }
+
+    // 子弹
+    for (var j = G.bullets.length - 1; j >= 0; j--) {
+      var bl = G.bullets[j];
+
+      if (bl.homing) {
+        bl.age += dt;
+        if (bl.state === 'chase') {
+          var desired = Math.atan2(p.y - bl.y, p.x - bl.x);
+          var curA = Math.atan2(bl.vy, bl.vx);
+          var dd2 = Math.atan2(Math.sin(desired - curA), Math.cos(desired - curA));
+          var mt = bl.turn * dt;
+          curA += clamp(dd2, -mt, mt);
+          bl.vx = Math.cos(curA) * bl.speed;
+          bl.vy = Math.sin(curA) * bl.speed;
+
+          var sep = Math.hypot(p.x - bl.x, p.y - bl.y);
+          var away = (p.x - bl.x) * bl.vx + (p.y - bl.y) * bl.vy;
+          if (bl.age > 0.7 && away < 0 && sep > 150) {
+            bl.state = 'flee';
+            bl.life = Math.min(bl.life, 1.4);
+          }
+        } else {
+          bl.vx *= 1 + dt * 1.6;
+          bl.vy *= 1 + dt * 1.6;
+        }
+      }
+
+      bl.x += bl.vx * dt * slowFactor;
+      bl.y += bl.vy * dt * slowFactor;
+      bl.life -= dt;
+
+      var dx = bl.x - p.x, dy = bl.y - p.y;
+      var dd = Math.hypot(dx, dy);
+
+      if (dd < bl.r + p.r) {
+        if (damagePlayer()) return;
+        G.bullets.splice(j, 1);
+        continue;
+      }
+
+      if (!bl.counted && dd < 62 && dd > bl.r + p.r) {
+        bl.counted = true;
+        G.dodges += 1;
+        G.score += 12 * cfg.scoreMul;
+        burstParticles(bl.x, bl.y, 4, '91,225,255', 90, 1);
+      }
+      if (bl.counted && dd > 95) bl.counted = false;
+
+      if (bl.life <= 0 || bl.x < -120 || bl.x > W + 120 || bl.y < -120 || bl.y > H + 120) {
+        G.bullets.splice(j, 1);
+      }
+    }
+
+    // 粒子
+    for (var k = G.particles.length - 1; k >= 0; k--) {
+      var pt = G.particles[k];
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vx *= Math.pow(0.12, dt);
+      pt.vy *= Math.pow(0.12, dt);
+      pt.life -= pt.decay * dt;
+      if (pt.life <= 0) G.particles.splice(k, 1);
+    }
+
+    for (var r = G.ripples.length - 1; r >= 0; r--) {
+      G.ripples[r].t += dt;
+      if (G.ripples[r].t >= G.ripples[r].dur) G.ripples.splice(r, 1);
+    }
+
+    G.shake *= Math.pow(0.02, dt);
+    G.flash = Math.max(0, G.flash - dt * 2.4);
+
+    refreshBuff();
+
+    if (G.elapsed >= DURATION) {
+      G.elapsed = DURATION;
+      endGame(true);
+    }
+  }
+
+  /* ---------- 渲染 ---------- */
+  function drawBackground(t) {
+    var g = ctx.createRadialGradient(W / 2, H * 0.45, 40, W / 2, H * 0.45, Math.max(W, H) * 0.8);
+    g.addColorStop(0, '#0b1020');
+    g.addColorStop(1, '#04050a');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = 'rgba(80,130,190,0.075)';
+    ctx.lineWidth = 1;
+    var step = 64;
+    var off = (t * 8) % step;
+    ctx.beginPath();
+    for (var x = -off; x < W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (var y = -off; y < H; y += step) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+
+    var v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.15, W / 2, H / 2, Math.max(W, H) * 0.72);
+    v.addColorStop(0, 'rgba(0,0,0,0)');
+    v.addColorStop(1, 'rgba(0,0,0,0.62)');
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawEnemy(t) {
+    var e = G.enemy;
+    ctx.save();
+    ctx.translate(e.x, e.y);
+
+    var glow = ctx.createRadialGradient(0, 0, e.r * 0.3, 0, 0, e.r * 3.2);
+    glow.addColorStop(0, 'rgba(255,55,85,0.42)');
+    glow.addColorStop(0.5, 'rgba(255,40,70,0.12)');
+    glow.addColorStop(1, 'rgba(255,40,70,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.r * 3.2, 0, TAU);
+    ctx.fill();
+
+    ctx.save();
+    ctx.rotate(e.a * 1.4);
+    ctx.fillStyle = 'rgba(255,70,100,0.5)';
+    for (var i = 0; i < 6; i++) {
+      ctx.rotate(TAU / 6);
+      ctx.beginPath();
+      ctx.moveTo(e.r * 0.85, -5);
+      ctx.lineTo(e.r * 1.62, 0);
+      ctx.lineTo(e.r * 0.85, 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    var core = ctx.createRadialGradient(0, -4, 2, 0, 0, e.r);
+    core.addColorStop(0, '#5a1020');
+    core.addColorStop(0.7, '#25060f');
+    core.addColorStop(1, '#120309');
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.r, 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,90,120,0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.r, 0, TAU);
+    ctx.stroke();
+
+    var px = Math.cos(e.pupil) * e.r * 0.32;
+    var py = Math.sin(e.pupil) * e.r * 0.32;
+    var eyeG = ctx.createRadialGradient(px, py, 1, px, py, e.r * 0.55);
+    eyeG.addColorStop(0, '#fff2f5');
+    eyeG.addColorStop(0.28, '#ff5a78');
+    eyeG.addColorStop(1, 'rgba(255,40,70,0)');
+    ctx.fillStyle = eyeG;
+    ctx.beginPath();
+    ctx.arc(px, py, e.r * 0.55, 0, TAU);
+    ctx.fill();
+
+    for (var b = 0; b < G.bursts.length; b++) {
+      var pr = 1 - G.bursts[b].t / G.bursts[b].max;
+      ctx.strokeStyle = 'rgba(255,80,110,' + (0.15 + pr * 0.55).toFixed(2) + ')';
+      ctx.lineWidth = 2 + pr * 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, e.r * (1.2 + pr * 2.4), 0, TAU);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawWarnings() {
+    for (var i = 0; i < G.warnings.length; i++) {
+      var w = G.warnings[i];
+      var k = w.t / w.max;
+      var a = 0.15 + (1 - k) * 0.55;
+      var g = ctx.createLinearGradient(w.x1, w.y1, w.x2, w.y2);
+      g.addColorStop(0, 'rgba(255,210,110,' + a.toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(255,90,60,0)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 1 + (1 - k) * 2.5;
+      ctx.beginPath();
+      ctx.moveTo(w.x1, w.y1);
+      ctx.lineTo(w.x2, w.y2);
+      ctx.stroke();
+    }
+  }
+
+  function drawLasers() {
+    for (var i = 0; i < G.lasers.length; i++) {
+      var l = G.lasers[i];
+      var ex = l.ox + Math.cos(l.ang) * l.len;
+      var ey = l.oy + Math.sin(l.ang) * l.len;
+
+      if (l.phase === 'warn') {
+        var k = 1 - l.t / l.warn;
+        ctx.strokeStyle = 'rgba(255,120,150,' + (0.12 + k * 0.5).toFixed(3) + ')';
+        ctx.lineWidth = 1 + k * 2;
+        ctx.setLineDash([10, 8]);
+        ctx.beginPath();
+        ctx.moveTo(l.ox, l.oy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        var g = ctx.createLinearGradient(l.ox, l.oy, ex, ey);
+        g.addColorStop(0, 'rgba(255,180,200,0.95)');
+        g.addColorStop(0.4, 'rgba(255,80,120,0.85)');
+        g.addColorStop(1, 'rgba(255,40,90,0.45)');
+        ctx.strokeStyle = g;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = l.width * 1.9;
+        ctx.beginPath();
+        ctx.moveTo(l.ox, l.oy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255,245,250,0.95)';
+        ctx.lineWidth = Math.max(2, l.width * 0.32);
+        ctx.beginPath();
+        ctx.moveTo(l.ox, l.oy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      if (l.phase === 'fire') {
+        ctx.fillStyle = 'rgba(255,235,240,0.9)';
+        ctx.beginPath();
+        ctx.arc(l.ox, l.oy, 9, 0, TAU);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawItems(t) {
+    for (var i = 0; i < G.items.length; i++) {
+      var it = G.items[i];
+      var def = ITEMS[it.type];
+      var left = it.life - it.age;
+      var fade = left < 0.6 ? Math.max(0, left / 0.6) : 1;
+      var pulse = 1 + Math.sin(t * 9 + it.phase) * 0.1;
+
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.translate(it.x, it.y);
+
+      ctx.globalCompositeOperation = 'lighter';
+      var g = ctx.createRadialGradient(0, 0, 2, 0, 0, it.r * 3.2);
+      g.addColorStop(0, def.color + 'cc');
+      g.addColorStop(1, def.color + '00');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, it.r * 3.2, 0, TAU);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, it.r * pulse, 0, TAU);
+      ctx.stroke();
+
+      // 剩余时间圆环（2 秒内逐渐缩短）
+      var prog = 1 - it.age / it.life;
+      var ringR = it.r + 7;
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringR, 0, TAU);
+      ctx.stroke();
+
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringR, -Math.PI / 2, -Math.PI / 2 + TAU * prog);
+      ctx.stroke();
+
+      var tipA = -Math.PI / 2 + TAU * prog;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.beginPath();
+      ctx.arc(Math.cos(tipA) * ringR, Math.sin(tipA) * ringR, 2.6, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(10,14,24,0.85)';
+      ctx.beginPath();
+      ctx.arc(0, 0, it.r * 0.82, 0, TAU);
+      ctx.fill();
+
+      ctx.strokeStyle = def.color;
+      ctx.fillStyle = def.color;
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+
+      if (def.glyph === 'cross') {
+        ctx.beginPath();
+        ctx.moveTo(-5.5, 0); ctx.lineTo(5.5, 0);
+        ctx.moveTo(0, -5.5); ctx.lineTo(0, 5.5);
+        ctx.stroke();
+      } else if (def.glyph === 'shield') {
+        ctx.beginPath();
+        ctx.moveTo(0, -7);
+        ctx.lineTo(6, -4);
+        ctx.lineTo(6, 2);
+        ctx.lineTo(0, 7.5);
+        ctx.lineTo(-6, 2);
+        ctx.lineTo(-6, -4);
+        ctx.closePath();
+        ctx.stroke();
+      } else if (def.glyph === 'snow') {
+        for (var k = 0; k < 3; k++) {
+          var a = k * Math.PI / 3;
+          ctx.beginPath();
+          ctx.moveTo(-Math.cos(a) * 6.5, -Math.sin(a) * 6.5);
+          ctx.lineTo(Math.cos(a) * 6.5, Math.sin(a) * 6.5);
+          ctx.stroke();
+        }
+      } else {
+        ctx.beginPath();
+        for (var s = 0; s < 4; s++) {
+          var sa = s * TAU / 4 - Math.PI / 4;
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(sa) * 7, Math.sin(sa) * 7);
+        }
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  function drawBullets() {
+    ctx.globalCompositeOperation = 'lighter';
+    for (var i = 0; i < G.bullets.length; i++) {
+      var b = G.bullets[i];
+
+      var tg = ctx.createLinearGradient(b.x, b.y, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
+      if (b.sniper) {
+        tg.addColorStop(0, 'rgba(255,240,170,0.9)');
+        tg.addColorStop(1, 'rgba(255,150,40,0)');
+      } else if (b.homing) {
+        tg.addColorStop(0, 'rgba(190,130,255,0.9)');
+        tg.addColorStop(1, 'rgba(120,60,255,0)');
+      } else {
+        tg.addColorStop(0, 'rgba(255,140,80,0.85)');
+        tg.addColorStop(1, 'rgba(255,50,90,0)');
+      }
+      ctx.strokeStyle = tg;
+      ctx.lineWidth = b.r * 1.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - b.vx * 0.05, b.y - b.vy * 0.05);
+      ctx.stroke();
+
+      var g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 2.8);
+      if (b.sniper) {
+        g.addColorStop(0, 'rgba(255,255,255,0.98)');
+        g.addColorStop(0.32, 'rgba(255,220,130,0.9)');
+        g.addColorStop(1, 'rgba(255,150,40,0)');
+      } else if (b.homing) {
+        g.addColorStop(0, 'rgba(255,240,255,0.98)');
+        g.addColorStop(0.32, 'rgba(190,120,255,0.9)');
+        g.addColorStop(1, 'rgba(120,60,255,0)');
+      } else {
+        g.addColorStop(0, 'rgba(255,255,240,0.95)');
+        g.addColorStop(0.32, 'rgba(255,150,70,0.85)');
+        g.addColorStop(1, 'rgba(255,40,70,0)');
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r * 2.8, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawParticles() {
+    ctx.globalCompositeOperation = 'lighter';
+    for (var i = 0; i < G.particles.length; i++) {
+      var p = G.particles[i];
+      ctx.fillStyle = 'rgba(' + p.color + ',' + Math.max(0, p.life).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawRipples() {
+    for (var i = 0; i < G.ripples.length; i++) {
+      var r = G.ripples[i];
+      var k = r.t / r.dur;
+      var rad = lerp(r.r0, r.r1, k);
+      var alpha = (1 - k) * 0.9;
+      ctx.strokeStyle = r.color.replace(/[\d.]+\)$/, alpha.toFixed(3) + ')');
+      ctx.lineWidth = Math.max(1, 3 * (1 - k));
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, rad, 0, TAU);
+      ctx.stroke();
+    }
+  }
+
+  function drawPlayer(t) {
+    var p = G.player;
+
+    for (var i = 0; i < p.trail.length; i++) {
+      var tr = p.trail[i];
+      if (tr.life <= 0) continue;
+      ctx.fillStyle = 'rgba(91,225,255,' + (tr.life * 0.10).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(tr.x, tr.y, p.r * 0.7 * tr.life, 0, TAU);
+      ctx.fill();
+    }
+
+    var blink = p.invuln > 0 && Math.floor(p.invuln * 14) % 2 === 0;
+
+    if (G.shieldT > 0) {
+      ctx.strokeStyle = 'rgba(255,209,102,' + (0.45 + Math.sin(t * 7) * 0.2).toFixed(2) + ')';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r + 15, 0, TAU);
+      ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    var g = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, 34);
+    g.addColorStop(0, blink ? 'rgba(255,120,150,0.85)' : 'rgba(140,240,255,0.9)');
+    g.addColorStop(0.35, blink ? 'rgba(255,80,110,0.35)' : 'rgba(91,225,255,0.32)');
+    g.addColorStop(1, 'rgba(91,225,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 34, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.strokeStyle = blink ? 'rgba(255,120,150,0.95)' : 'rgba(180,245,255,0.95)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r + 7 + Math.sin(t * 6) * 1.4, 0, TAU);
+    ctx.stroke();
+
+    ctx.fillStyle = blink ? '#ff8aa4' : '#ffffff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * 0.62, 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(140,230,255,0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p.x - p.r - 14, p.y); ctx.lineTo(p.x - p.r - 4, p.y);
+    ctx.moveTo(p.x + p.r + 4, p.y); ctx.lineTo(p.x + p.r + 14, p.y);
+    ctx.moveTo(p.x, p.y - p.r - 14); ctx.lineTo(p.x, p.y - p.r - 4);
+    ctx.moveTo(p.x, p.y + p.r + 4); ctx.lineTo(p.x, p.y + p.r + 14);
+    ctx.stroke();
+  }
+
+  function draw(t) {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    var sx = 0, sy = 0;
+    if (G.shake > 0.35) {
+      sx = rand(-G.shake, G.shake);
+      sy = rand(-G.shake, G.shake);
+    }
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    drawBackground(t);
+    drawRipples();
+    drawItems(t);
+    drawEnemy(t);
+    drawWarnings();
+    drawLasers();
+    drawBullets();
+    drawParticles();
+    if (G.mode === 'playing') drawPlayer(t);
+
+    ctx.restore();
+
+    if (G.flash > 0.01) {
+      ctx.fillStyle = 'rgba(255,40,70,' + (G.flash * 0.15).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  /* ---------- 主循环 ---------- */
+  var lastT = 0;
+  function loop(ts) {
+    if (!lastT) lastT = ts;
+    var dt = (ts - lastT) / 1000;
+    lastT = ts;
+    if (dt > 0.05) dt = 0.05;
+
+    if (G.mode === 'playing' && !G.paused && !document.hidden) {
+      update(dt);
+      hudTime.textContent = Math.max(0, DURATION - G.elapsed).toFixed(1);
+      hudScore.textContent = Math.floor(G.score);
+      hudDodge.textContent = G.dodges;
+    }
+    if (G.paused && G.mode === 'playing') pauseHint.classList.add('show');
+    else pauseHint.classList.remove('show');
+
+    draw(ts / 1000);
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- 启动 ---------- */
+  resize();
+  hudBest.textContent = bestAll();
+  G.player.x = window.innerWidth / 2;
+  G.player.y = window.innerHeight / 2;
+  G.enemy.x = window.innerWidth / 2;
+  G.enemy.y = window.innerHeight * 0.28;
+  showMenu();
+  requestAnimationFrame(loop);
+
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'r' || e.key === 'R') {
+      if (G.mode === 'over') startGame(G.cfg.key);
+    }
+    if (e.key === 'Escape' && G.mode === 'playing') {
+      G.paused = !G.paused;
+    }
+  });
+})();
+</script>
+</body>
+</html>
