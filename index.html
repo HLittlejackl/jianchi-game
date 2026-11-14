@@ -13,8 +13,10 @@
     cursor: none;
     user-select: none;
     -webkit-user-select: none;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
   }
-  canvas { display: block; }
+  canvas { display: block; touch-action: none; }
 
   #hud {
     position: fixed; inset: 0; pointer-events: none;
@@ -128,6 +130,24 @@
     border: 1px solid rgba(255,255,255,.14);
   }
   .btn.compact { padding: 13px 30px; font-size: 14px; }
+
+  .moderow { display: flex; gap: 12px; justify-content: center; }
+  .modebtn {
+    pointer-events: auto; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    padding: 13px 30px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.04);
+    color: #8b9ab3; font-family: inherit; font-size: 14px; letter-spacing: 1px;
+    transition: color .16s, border-color .16s, background .16s, transform .16s, box-shadow .16s;
+  }
+  .modebtn svg { flex: 0 0 auto; }
+  .modebtn:hover { border-color: rgba(255,255,255,.28); color: #c2cfe4; transform: translateY(-1px); }
+  .modebtn.active {
+    border-color: rgba(91,225,255,.6);
+    color: #5be1ff; background: rgba(91,225,255,.12);
+    box-shadow: 0 0 18px -4px rgba(91,225,255,.85);
+  }
   .btn.danger {
     background: linear-gradient(95deg, #ff6b7f, #ff9a5a);
     box-shadow: 0 8px 28px rgba(255,90,110,.32);
@@ -286,7 +306,7 @@
     return m;
   }
 
-  var mouse = { x: 0, y: 0, has: false };
+  var pointer = { x: 0, y: 0, has: false, down: false, type: 'mouse' };
 
   var G = {
     mode: 'menu',
@@ -317,8 +337,20 @@
     slowT: 0,
     shake: 0,
     flash: 0,
-    paused: false
+    paused: false,
+    controlMode: 'follow',   // follow = 光标跟随（默认桌面）；drag = 按住拖动（手机）
+    touchOffset: 72,         // 触屏拖动时玩家点上移，避免手指挡住
+    dragSpeedMul: 2.2,       // 按住模式的移动速度（每秒移动 屏幕长边 × 该系数）
+    dragTarget: { x: 0, y: 0, on: false }
   };
+
+  var coarsePointer = false;
+  try { coarsePointer = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+  var savedCtrl = null;
+  try { savedCtrl = localStorage.getItem('mdg_ctrl'); } catch (e) {}
+  G.controlMode = (savedCtrl === 'drag' || savedCtrl === 'follow')
+    ? savedCtrl
+    : (coarsePointer ? 'drag' : 'follow');
 
   /* ---------- 画布 ---------- */
   function resize() {
@@ -334,12 +366,29 @@
   window.addEventListener('resize', resize);
 
   /* ---------- 输入 ---------- */
-  window.addEventListener('mousemove', function (e) {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-    mouse.has = true;
+  function pointerPos(e) {
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+    pointer.has = true;
+  }
+  window.addEventListener('pointerdown', function (e) {
+    pointerPos(e);
+    pointer.down = true;
+    pointer.type = e.pointerType || 'mouse';
+    if (e.pointerType === 'touch' && e.cancelable) e.preventDefault();
+  });
+  window.addEventListener('pointermove', function (e) {
+    pointerPos(e);
+    if (e.pointerType) pointer.type = e.pointerType;
+  });
+  window.addEventListener('pointerup', function () { pointer.down = false; });
+  window.addEventListener('pointercancel', function () { pointer.down = false; });
+  // 鼠标移出窗口时视为松开
+  window.addEventListener('mouseout', function (e) {
+    if (!e.relatedTarget && !e.toElement) pointer.down = false;
   });
   window.addEventListener('blur', function () {
+    pointer.down = false;
     if (G.mode === 'playing') G.paused = true;
   });
   window.addEventListener('focus', function () {
@@ -428,8 +477,8 @@
     G.paused = false;
     G.player.invuln = 0;
     G.player.trail.length = 0;
-    G.player.x = mouse.has ? clamp(mouse.x, 20, W - 20) : W / 2;
-    G.player.y = mouse.has ? clamp(mouse.y, 20, H - 20) : H / 2;
+    G.player.x = pointer.has ? clamp(pointer.x, 20, W - 20) : W / 2;
+    G.player.y = pointer.has ? clamp(pointer.y, 20, H - 20) : H / 2;
     G.enemy.x = W / 2;
     G.enemy.y = H * 0.28;
     G.enemy.a = 0;
@@ -519,10 +568,28 @@
         '· 红色核心锁定你射击，弹幕随时间越来越复杂<br>' +
         '· <span class="k">20 秒</span>激光、<span class="k">30 秒</span>环形爆发、<span class="k">40 秒</span>追踪弹<br>' +
         '· 简单与普通会掉落道具，<span class="k">困难没有任何道具</span><br>' +
+        '· 手机用「手机操作」：按住屏幕移动，松手即停<br>' +
         '· 坚持满 <span class="k">60 秒</span> 即为通关' +
       '</div>' +
       '<div class="difflabel">选择难度</div>' +
       '<div class="diffrow">' + btns + '</div>' +
+      '<div class="difflabel" style="margin-top:15px;">操作方式</div>' +
+      '<div class="moderow">' +
+        '<button class="modebtn" data-mode="follow">' +
+          '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+            '<rect x="2.5" y="3.8" width="19" height="12.8" rx="1.8"/>' +
+            '<path d="M8.6 20.4h6.8"/><path d="M12 16.6v3.8"/>' +
+          '</svg>' +
+          '<span>电脑操作</span>' +
+        '</button>' +
+        '<button class="modebtn" data-mode="drag">' +
+          '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+            '<rect x="7" y="2.4" width="10" height="19.2" rx="2.3"/>' +
+            '<path d="M10.4 19.1h3.2"/>' +
+          '</svg>' +
+          '<span>手机操作</span>' +
+        '</button>' +
+      '</div>' +
       '<div class="subtitle" style="margin:14px 0 0;font-size:11px;">难度越高，弹幕升级越早、生命越少、得分倍率越高</div>';
 
     overlay.classList.add('show');
@@ -535,6 +602,17 @@
         var k = this.getAttribute('data-diff');
         if (k === 'hard') showHardConfirm();
         else startGame(k);
+      });
+    }
+
+    var modes = overlayInner.querySelectorAll('.modebtn');
+    for (var mi = 0; mi < modes.length; mi++) {
+      if (modes[mi].getAttribute('data-mode') === G.controlMode) modes[mi].classList.add('active');
+      modes[mi].addEventListener('click', function () {
+        G.controlMode = this.getAttribute('data-mode');
+        try { localStorage.setItem('mdg_ctrl', G.controlMode); } catch (e) {}
+        for (var q = 0; q < modes.length; q++) modes[q].classList.remove('active');
+        this.classList.add('active');
       });
     }
   }
@@ -775,11 +853,38 @@
     var phase = phaseOf(cfg, d);
     var slowFactor = G.slowT > 0 ? 0.45 : 1;
 
-    if (mouse.has) {
-      p.x = clamp(mouse.x, p.r + 2, W - p.r - 2);
-      p.y = clamp(mouse.y, p.r + 2, H - p.r - 2);
+    if (pointer.has) {
+      var aimX = pointer.x, aimY = pointer.y;
+      var canMove = true;
+      if (G.controlMode === 'drag') {
+        canMove = pointer.down;
+        if (pointer.type === 'touch') aimY -= G.touchOffset;
+      }
+      if (canMove) {
+        var tx = clamp(aimX, p.r + 2, W - p.r - 2);
+        var ty = clamp(aimY, p.r + 2, H - p.r - 2);
+        if (G.controlMode === 'drag') {
+          // 按住模式：沿直线以固定速度冲向目标点，不做瞬移
+          var ddx = tx - p.x, ddy = ty - p.y;
+          var dist = Math.sqrt(ddx * ddx + ddy * ddy);
+          var stepLen = Math.max(W, H) * G.dragSpeedMul * dt;
+          if (dist <= stepLen || dist < 0.6) {
+            p.x = tx; p.y = ty;
+          } else {
+            p.x += ddx / dist * stepLen;
+            p.y += ddy / dist * stepLen;
+          }
+          G.dragTarget.x = tx;
+          G.dragTarget.y = ty;
+          G.dragTarget.on = true;
+        } else {
+          p.x = tx; p.y = ty;
+          G.dragTarget.on = false;
+        }
+      } else {
+        G.dragTarget.on = false;
+      }
     }
-
     p.trail.push({ x: p.x, y: p.y, life: 1 });
     if (p.trail.length > 22) p.trail.shift();
     for (var i = 0; i < p.trail.length; i++) p.trail[i].life -= dt * 2.6;
@@ -1393,6 +1498,34 @@
     drawBullets();
     drawParticles();
     if (G.mode === 'playing') drawPlayer(t);
+
+    // 按住模式：标出目标点，方便判断正在冲向哪里
+    if (G.mode === 'playing' && G.dragTarget.on) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(140,220,255,0.32)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.arc(G.dragTarget.x, G.dragTarget.y, 15, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(140,220,255,0.5)';
+      ctx.beginPath();
+      ctx.arc(G.dragTarget.x, G.dragTarget.y, 2.8, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 按住拖动模式：开局几秒给个操作提示
+    if (G.mode === 'playing' && G.controlMode === 'drag' && !pointer.down && G.elapsed < 4) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, (4 - G.elapsed) / 1.5) * 0.6;
+      ctx.fillStyle = '#dbe8ff';
+      ctx.font = '15px "Microsoft YaHei", "PingFang SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(coarsePointer ? '按住屏幕拖动' : '按住鼠标左键拖动', W / 2, H - 68);
+      ctx.restore();
+    }
 
     ctx.restore();
 
